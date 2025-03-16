@@ -1,32 +1,33 @@
 const chai = require('chai');
-global.expect = chai.expect;
-
 const fs = require('fs');
 const path = require('path');
-const { JSDOM } = require('jsdom');
+const jsdom = require('jsdom');
 const babel = require('@babel/core');
 
-// Load HTML content
+const { expect } = chai;
+const { JSDOM } = jsdom;
+
+// Load HTML
 const html = fs.readFileSync(path.resolve(__dirname, '..', 'index.html'), 'utf-8');
 
-// Transform JavaScript using Babel
-const { code: transformedScript } = babel.transformFileSync(
-  path.resolve(__dirname, '..', 'src/index.js'),
-  { presets: ['@babel/preset-env'] }
-);
-
-// Initialize JSDOM
-const dom = new JSDOM(html, {
-  runScripts: "dangerously",
-  resources: "usable"
+// Transform JS using Babel
+const jsFilePath = path.resolve(__dirname, '..', 'src/index.js');
+const { code: transformedScript } = babel.transformFileSync(jsFilePath, {
+  presets: ['@babel/preset-env'],
 });
 
-// Inject the transformed JavaScript into the virtual DOM
-const scriptElement = dom.window.document.createElement("script");
-scriptElement.textContent = transformedScript;
-dom.window.document.body.appendChild(scriptElement);
+// Set up JSDOM
+const dom = new JSDOM(html, {
+  runScripts: 'dangerously',
+  resources: 'usable',
+});
 
-// Expose JSDOM globals to the testing environment
+// Append the script to the DOM
+const scriptEl = dom.window.document.createElement('script');
+scriptEl.textContent = transformedScript;
+dom.window.document.body.appendChild(scriptEl);
+
+// Expose global variables
 global.window = dom.window;
 global.document = dom.window.document;
 global.navigator = dom.window.navigator;
@@ -34,24 +35,31 @@ global.HTMLElement = dom.window.HTMLElement;
 global.Node = dom.window.Node;
 global.Text = dom.window.Text;
 global.XMLHttpRequest = dom.window.XMLHttpRequest;
+global.expect = expect;
 
-// Sample test suite for JavaScript event handling
+// Wait for DOM content to load before running tests
 describe('Handling form submission', () => {
-  let form
-  let formInput
-  let taskList
+  let form;
+  let input;
+  let taskList;
 
-  before(() => {
-    form = document.querySelector('#create-task-form')
-    formInput = document.querySelector('#new-task-description')
-    taskList = document.querySelector('#tasks')
-  })
+  before((done) => {
+    form = document.querySelector('#create-task-form');
+    input = document.querySelector('#new-task-description');
+    taskList = document.querySelector('#tasks');
 
-  it('should add an event to the form and add input to webpage', () => {
-    // Simulate user input
-    formInput.value = 'Wash the dishes'
-    const event = new dom.window.Event('submit')
-    form.dispatchEvent(event)
-    expect(taskList.textContent).to.include('Wash the dishes')
-  })
-})
+    // Wait a tick for scripts to run
+    setTimeout(() => done(), 50);
+  });
+
+  it('adds task to the DOM when the form is submitted', () => {
+    input.value = 'Wash the dishes';
+    const submitEvent = new dom.window.Event('submit', {
+      bubbles: true,
+      cancelable: true,
+    });
+    form.dispatchEvent(submitEvent);
+
+    expect(taskList.textContent).to.include('Wash the dishes');
+  });
+});
